@@ -3,11 +3,18 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from decimal import Decimal
+from datetime import date
 
 from services.money import parse_money, format_money, calc_intermediate, calc_final
 from models.db import Database
+from handlers.history import AddHistory
 
 router = Router()
 
@@ -43,8 +50,35 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.message(F.text == "🚀 Начать расчёт")
 async def start_calc(message: Message, state: FSMContext):
+    await state.clear()
+    last = await db.get_last_values(message.from_user.id)
+    await state.update_data(last=last)
     await state.set_state(Calc.site)
-    await message.answer("💳 Сколько рублей на сайте?")
+    await ask_amount(
+        message,
+        "site",
+        "💳 Сколько рублей на сайте?",
+        last.get("site"),
+    )
+
+
+async def ask_amount(target: Message | CallbackQuery, field: str, question: str, last_value):
+    buttons = []
+    if last_value is not None:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"Использовать прошлое ({format_money(Decimal(str(last_value)))})",
+                    callback_data=f"calc:last:{field}",
+                )
+            ]
+        )
+    buttons.append([InlineKeyboardButton(text="❌ Прервать", callback_data="calc:cancel")])
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    if isinstance(target, Message):
+        await target.answer(question, reply_markup=markup)
+    else:
+        await target.message.answer(question, reply_markup=markup)
 
 
 @router.message(Calc.site)
@@ -55,8 +89,14 @@ async def get_site(message: Message, state: FSMContext):
         await message.answer("Похоже, это не похоже на сумму. Введи число, например: 1234.56 или 1 234,56")
         return
     await state.update_data(site=site)
+    data = await state.get_data()
     await state.set_state(Calc.unconfirmed)
-    await message.answer("💳 Сколько рублей в неподтверждённых заказах?")
+    await ask_amount(
+        message,
+        "unconfirmed",
+        "💳 Сколько рублей в неподтверждённых заказах?",
+        data.get("last", {}).get("unconfirmed"),
+    )
 
 
 @router.message(Calc.unconfirmed)
@@ -88,13 +128,20 @@ async def get_unconfirmed(message: Message, state: FSMContext):
 async def calc_cancel(cb: CallbackQuery, state: FSMContext):
     await state.clear()
     await cb.message.edit_text("Расчёт прерван")
+    await cb.message.answer("Выбери действие👇", reply_markup=start_kb)
 
 
 @router.callback_query(F.data == "calc:cont")
 async def calc_continue(cb: CallbackQuery, state: FSMContext):
     await cb.message.edit_reply_markup()
+    data = await state.get_data()
     await state.set_state(Calc.tbank)
-    await cb.message.answer("🟡 Сколько денег на Т-Банке?")
+    await ask_amount(
+        cb,
+        "tbank",
+        "🟡 Сколько денег на Т-Банке?",
+        data.get("last", {}).get("tbank"),
+    )
 
 
 @router.message(Calc.tbank)
@@ -105,8 +152,14 @@ async def get_tbank(message: Message, state: FSMContext):
         await message.answer("Похоже, это не похоже на сумму. Введи число, например: 1234.56 или 1 234,56")
         return
     await state.update_data(tbank=tbank)
+    data = await state.get_data()
     await state.set_state(Calc.ozone)
-    await message.answer("🔵 Сколько денег на Озоне?")
+    await ask_amount(
+        message,
+        "ozone",
+        "🔵 Сколько денег на Озоне?",
+        data.get("last", {}).get("ozone"),
+    )
 
 
 @router.message(Calc.ozone)
@@ -127,21 +180,101 @@ async def get_ozone(message: Message, state: FSMContext):
         tbank=float(tbank),
         ozone=float(ozone),
     )
-    await state.clear()
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="🔄 Повторить расчёт"),
-                KeyboardButton(text="💾 Использовать прошлые значения"),
-            ],
-            [KeyboardButton(text="📜 История")],
-        ],
-        resize_keyboard=True,
+    last_balance = await db.get_last_balance(message.from_user.id)
+    if last_balance is None:
+        delta_text = "начало"
+    else:
+        delta_text = format_money(final - Decimal(str(last_balance)))
+    await state.set_state(AddHistory.reason)
+    await state.update_data(
+        d=date.today().isoformat(),
+        balance=float(final),
+        delta_text=delta_text,
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="❌ Прервать", callback_data="calc:cancel")]]
     )
     await message.answer(
-        f"Итоговый заработок за день: {format_money(final)}",
+        f"Итоговый заработок за день: {format_money(final)}\nПриход: {delta_text}\nПричина траты (если есть)?",
         reply_markup=kb,
     )
+
+
+@router.callback_query(F.data.startswith("calc:last:"))
+async def calc_use_last(cb: CallbackQuery, state: FSMContext):
+    field = cb.data.split(":")[2]
+    data = await state.get_data()
+    last = data.get("last", {})
+    value = last.get(field)
+    if value is None:
+        await cb.answer("Нет прошлых данных", show_alert=True)
+        return
+    value = Decimal(str(value))
+    if field == "site":
+        await state.update_data(site=value)
+        await state.set_state(Calc.unconfirmed)
+        await ask_amount(
+            cb,
+            "unconfirmed",
+            "💳 Сколько рублей в неподтверждённых заказах?",
+            last.get("unconfirmed"),
+        )
+    elif field == "unconfirmed":
+        site = data.get("site")
+        intermediate = calc_intermediate(site, value)
+        await state.update_data(unconfirmed=value, intermediate=intermediate)
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Продолжить", callback_data="calc:cont"),
+                    InlineKeyboardButton(text="❌ Прервать", callback_data="calc:cancel"),
+                ]
+            ]
+        )
+        await state.set_state(Calc.confirm)
+        await cb.message.edit_text(
+            f"Промежуточный результат: {format_money(intermediate)}",
+            reply_markup=kb,
+        )
+    elif field == "tbank":
+        await state.update_data(tbank=value)
+        await state.set_state(Calc.ozone)
+        await ask_amount(
+            cb,
+            "ozone",
+            "🔵 Сколько денег на Озоне?",
+            last.get("ozone"),
+        )
+    elif field == "ozone":
+        intermediate = data.get("intermediate")
+        tbank = data.get("tbank")
+        final = calc_final(intermediate, tbank, value)
+        await db.update_last_values(
+            cb.from_user.id,
+            site=float(data["site"]),
+            unconfirmed=float(data["unconfirmed"]),
+            tbank=float(tbank),
+            ozone=float(value),
+        )
+        last_balance = await db.get_last_balance(cb.from_user.id)
+        if last_balance is None:
+            delta_text = "начало"
+        else:
+            delta_text = format_money(final - Decimal(str(last_balance)))
+        await state.set_state(AddHistory.reason)
+        await state.update_data(
+            d=date.today().isoformat(),
+            balance=float(final),
+            delta_text=delta_text,
+        )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="❌ Прервать", callback_data="calc:cancel")]]
+        )
+        await cb.message.edit_text(
+            f"Итоговый заработок за день: {format_money(final)}\nПриход: {delta_text}\nПричина траты (если есть)?",
+            reply_markup=kb,
+        )
+    await cb.answer()
 
 
 @router.message(F.text == "🔄 Повторить расчёт")

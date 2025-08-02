@@ -15,7 +15,7 @@ router = Router()
 
 db = Database()
 
-MOOD_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
+MOOD_TEXT = {"green": "Да", "yellow": "Не совсем", "red": "Нет"}
 
 PAGE_SIZE = 7
 
@@ -23,8 +23,7 @@ PAGE_SIZE = 7
 class AddHistory(StatesGroup):
     date = State()
     balance = State()
-    delta = State()
-    note = State()
+    reason = State()
     mood = State()
 
 
@@ -65,12 +64,14 @@ def make_history_list(records):
         return "История пуста"
     lines = []
     for idx, r in enumerate(records, start=1):
-        mood = MOOD_EMOJI.get(r["mood"], "")
-        balance = format_money(Decimal(str(r["balance"]))) if r["balance"] is not None else "-"
+        mood = MOOD_TEXT.get(r["mood"], "")
+        balance = (
+            format_money(Decimal(str(r["balance"]))) if r["balance"] is not None else "-"
+        )
         delta = r["delta_text"] or "-"
         note = r["note"] or "-"
         lines.append(
-            f"{idx}. {r['d']} | {balance} | Δ {delta} | {mood} | {note}"
+            f"{idx}. {r['d']} | {balance} | Приход {delta} | {mood} | {note}"
         )
     return "\n".join(lines)
 
@@ -111,23 +112,23 @@ async def history_add_balance(message: Message, state: FSMContext):
     except Exception:
         await message.answer("Похоже, это не похоже на сумму. Введи число.")
         return
-    await state.update_data(balance=float(balance))
-    await state.set_state(AddHistory.delta)
-    await message.answer("🔺 Δ (число или текст)")
+    last = await db.get_last_balance(message.from_user.id)
+    if last is None:
+        delta_text = "начало"
+    else:
+        delta_text = format_money(Decimal(balance) - Decimal(str(last)))
+    await state.update_data(balance=float(balance), delta_text=delta_text)
+    await state.set_state(AddHistory.reason)
+    await message.answer("Причина траты (если есть)?")
 
 
-@router.message(AddHistory.delta)
-async def history_add_delta(message: Message, state: FSMContext):
-    await state.update_data(delta_text=message.text)
-    await state.set_state(AddHistory.note)
-    await message.answer("📝 Заметка (можно пропустить)")
-
-
-@router.message(AddHistory.note)
-async def history_add_note(message: Message, state: FSMContext):
+@router.message(AddHistory.reason)
+async def history_add_reason(message: Message, state: FSMContext):
     await state.update_data(note=message.text)
     await state.set_state(AddHistory.mood)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🟢", callback_data="mood:green"), InlineKeyboardButton(text="🟡", callback_data="mood:yellow"), InlineKeyboardButton(text="🔴", callback_data="mood:red")]])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="Да", callback_data="mood:green"), InlineKeyboardButton(text="Не совсем", callback_data="mood:yellow"), InlineKeyboardButton(text="Нет", callback_data="mood:red")]]
+    )
     await message.answer("Выберите настроение", reply_markup=kb)
 
 
@@ -144,7 +145,23 @@ async def history_add_mood(cb: CallbackQuery, state: FSMContext):
         mood,
     )
     await state.clear()
+    record = {
+        "d": data["d"],
+        "balance": data["balance"],
+        "delta_text": data["delta_text"],
+        "note": data["note"],
+        "mood": mood,
+    }
+    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🔄 Повторить расчёт"), KeyboardButton(text="💾 Использовать прошлые значения")],
+            [KeyboardButton(text="📜 История")],
+        ],
+        resize_keyboard=True,
+    )
     await cb.message.edit_text("Запись добавлена")
+    await cb.message.answer(make_history_card(record), reply_markup=kb)
     await cb.answer()
 
 
@@ -154,13 +171,13 @@ def make_history_card(r):
     )
     delta = r["delta_text"] or "-"
     note = r["note"] or "-"
-    mood = MOOD_EMOJI.get(r["mood"], "")
+    mood = MOOD_TEXT.get(r["mood"], "")
     return (
         f"📅 Дата: {r['d']}\n"
         f"💰 Баланс: {balance}\n"
-        f"🔺 Δ: {delta}\n"
-        f"📝 Заметка: {note}\n"
-        f"🙂 Настроение: {mood}"
+        f"📈 Приход: {delta}\n"
+        f"Причина траты: {note}\n"
+        f"Настроение: {mood}"
     )
 
 
@@ -190,8 +207,8 @@ async def history_edit_menu(cb: CallbackQuery, state: FSMContext):
         inline_keyboard=[
             [InlineKeyboardButton(text="Дата", callback_data="hist:field:d")],
             [InlineKeyboardButton(text="Баланс", callback_data="hist:field:balance")],
-            [InlineKeyboardButton(text="Δ", callback_data="hist:field:delta_text")],
-            [InlineKeyboardButton(text="Заметка", callback_data="hist:field:note")],
+            [InlineKeyboardButton(text="Приход", callback_data="hist:field:delta_text")],
+            [InlineKeyboardButton(text="Причина траты", callback_data="hist:field:note")],
             [InlineKeyboardButton(text="Настроение", callback_data="hist:field:mood")],
             [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"hist:view:{rid}:{page}")],
         ]
@@ -210,9 +227,9 @@ async def history_edit_field(cb: CallbackQuery, state: FSMContext):
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="🟢", callback_data=f"hist:setmood:green"),
-                    InlineKeyboardButton(text="🟡", callback_data=f"hist:setmood:yellow"),
-                    InlineKeyboardButton(text="🔴", callback_data=f"hist:setmood:red"),
+                    InlineKeyboardButton(text="Да", callback_data=f"hist:setmood:green"),
+                    InlineKeyboardButton(text="Не совсем", callback_data=f"hist:setmood:yellow"),
+                    InlineKeyboardButton(text="Нет", callback_data=f"hist:setmood:red"),
                 ],
                 [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"hist:edit:{rid}:{page}")],
             ]
@@ -222,8 +239,8 @@ async def history_edit_field(cb: CallbackQuery, state: FSMContext):
         prompts = {
             "d": "📅 Введите дату в формате YYYY-MM-DD",
             "balance": "💰 Баланс",
-            "delta_text": "🔺 Δ (число или текст)",
-            "note": "📝 Заметка (можно пусто)",
+            "delta_text": "📈 Приход (число или текст)",
+            "note": "Причина траты (можно пусто)",
         }
         await state.update_data(field=field)
         await state.set_state(EditHistory.value)

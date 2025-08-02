@@ -84,6 +84,15 @@ class Database:
         )
         await conn.commit()
 
+    async def get_last_balance(self, user_id: int) -> Optional[float]:
+        conn = await self.connect()
+        async with conn.execute(
+            "SELECT balance FROM history WHERE user_id=? ORDER BY d DESC LIMIT 1",
+            (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        return row[0] if row else None
+
     async def add_history(self, user_id: int, d: str, balance: float, delta_text: str, note: str, mood: str):
         conn = await self.connect()
         await conn.execute(
