@@ -10,7 +10,7 @@ from datetime import date
 from services.money import parse_money, format_money, calc_intermediate, calc_final
 from models.db import Database
 from handlers.history import AddHistory
-from keyboards import main_kb
+from keyboards.main import main_kb
 
 router = Router()
 

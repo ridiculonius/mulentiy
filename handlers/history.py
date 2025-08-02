@@ -10,7 +10,7 @@ from typing import Any
 
 from models.db import Database
 from services.money import parse_money, format_money
-from keyboards import main_kb
+from keyboards.main import main_kb
 
 router = Router()
 

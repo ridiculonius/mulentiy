@@ -1,3 +1,3 @@
-from .main import main_kb
+"""Keyboard package."""
 
-__all__ = ["main_kb"]
+__all__ = []
