@@ -16,7 +16,12 @@ router = Router()
 
 db = Database()
 
-MOOD_TEXT = {"green": "Да", "yellow": "Не совсем", "red": "Нет"}
+# Отображение настроения с эмодзи
+MOOD_TEXT = {
+    "green": "🟢 Да",
+    "yellow": "🟡 Не совсем",
+    "red": "🔴 Нет",
+}
 
 PAGE_SIZE = 7
 
@@ -73,9 +78,12 @@ def make_history_list(records):
         delta = r["delta_text"] or "-"
         note = r["note"] or "-"
         lines.append(
-            f"{idx}. {r['d']} | {balance} | Приход {delta} | {mood} | {note}"
+            f"{idx}. {r['d']} {mood}\n"
+            f"   Баланс: {balance}\n"
+            f"   Приход: {delta}\n"
+            f"   Заметка: {note}"
         )
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 @router.callback_query(F.data.startswith("hist:page:"))
@@ -129,7 +137,7 @@ async def history_add_reason(message: Message, state: FSMContext):
     await state.update_data(note=message.text)
     await state.set_state(AddHistory.mood)
     kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="Да", callback_data="mood:green"), InlineKeyboardButton(text="Не совсем", callback_data="mood:yellow"), InlineKeyboardButton(text="Нет", callback_data="mood:red")]]
+        inline_keyboard=[[InlineKeyboardButton(text="🟢 Да", callback_data="mood:green"), InlineKeyboardButton(text="🟡 Не совсем", callback_data="mood:yellow"), InlineKeyboardButton(text="🔴 Нет", callback_data="mood:red")]]
     )
     await message.answer("Выберите настроение", reply_markup=kb)
 
@@ -170,7 +178,7 @@ def make_history_card(r):
         f"📅 Дата: {r['d']}\n"
         f"💰 Баланс: {balance}\n"
         f"📈 Приход: {delta}\n"
-        f"Причина траты: {note}\n"
+        f"📝 Причина траты: {note}\n"
         f"Настроение: {mood}"
     )
 
@@ -221,9 +229,9 @@ async def history_edit_field(cb: CallbackQuery, state: FSMContext):
         kb = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
-                    InlineKeyboardButton(text="Да", callback_data=f"hist:setmood:green"),
-                    InlineKeyboardButton(text="Не совсем", callback_data=f"hist:setmood:yellow"),
-                    InlineKeyboardButton(text="Нет", callback_data=f"hist:setmood:red"),
+                    InlineKeyboardButton(text="🟢 Да", callback_data=f"hist:setmood:green"),
+                    InlineKeyboardButton(text="🟡 Не совсем", callback_data=f"hist:setmood:yellow"),
+                    InlineKeyboardButton(text="🔴 Нет", callback_data=f"hist:setmood:red"),
                 ],
                 [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"hist:edit:{rid}:{page}")],
             ]
