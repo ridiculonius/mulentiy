@@ -10,6 +10,7 @@ from typing import Any
 
 from models.db import Database
 from services.money import parse_money, format_money
+from keyboards import main_kb
 
 router = Router()
 
@@ -53,6 +54,7 @@ def history_kb(records, page: int, total: int):
 @router.message(F.text == "📜 История")
 async def cmd_history(message: Message, state: FSMContext):
     await state.clear()
+    await db.seed_history_if_empty(message.from_user.id)
     total = await db.count_history(message.from_user.id)
     records = await db.list_history(message.from_user.id, 0, PAGE_SIZE)
     text = make_history_list(records)
@@ -152,16 +154,8 @@ async def history_add_mood(cb: CallbackQuery, state: FSMContext):
         "note": data["note"],
         "mood": mood,
     }
-    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🔄 Повторить расчёт"), KeyboardButton(text="💾 Использовать прошлые значения")],
-            [KeyboardButton(text="📜 История")],
-        ],
-        resize_keyboard=True,
-    )
     await cb.message.edit_text("Запись добавлена")
-    await cb.message.answer(make_history_card(record), reply_markup=kb)
+    await cb.message.answer(make_history_card(record), reply_markup=main_kb)
     await cb.answer()
 
 

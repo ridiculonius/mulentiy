@@ -3,18 +3,14 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import (
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from decimal import Decimal
 from datetime import date
 
 from services.money import parse_money, format_money, calc_intermediate, calc_final
 from models.db import Database
 from handlers.history import AddHistory
+from keyboards import main_kb
 
 router = Router()
 
@@ -33,18 +29,13 @@ class EditLast(StatesGroup):
     input = State()
 
 
-start_kb = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="🚀 Начать расчёт")]],
-    resize_keyboard=True,
-)
-
-
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
+    await db.seed_history_if_empty(message.from_user.id)
     await message.answer(
         "Привет! Я помогу посчитать заработок за день и вести историю. Выбери действие👇",
-        reply_markup=start_kb,
+        reply_markup=main_kb,
     )
 
 
@@ -128,7 +119,7 @@ async def get_unconfirmed(message: Message, state: FSMContext):
 async def calc_cancel(cb: CallbackQuery, state: FSMContext):
     await state.clear()
     await cb.message.edit_text("Расчёт прерван")
-    await cb.message.answer("Выбери действие👇", reply_markup=start_kb)
+    await cb.message.answer("Выбери действие👇", reply_markup=main_kb)
 
 
 @router.callback_query(F.data == "calc:cont")
@@ -315,19 +306,9 @@ async def prompt_last_field(target: Message, state: FSMContext):
             tbank=float(values["tbank"]),
             ozone=float(values["ozone"]),
         )
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [
-                    KeyboardButton(text="🔄 Повторить расчёт"),
-                    KeyboardButton(text="💾 Использовать прошлые значения"),
-                ],
-                [KeyboardButton(text="📜 История")],
-            ],
-            resize_keyboard=True,
-        )
         await target.answer(
             f"Итоговый заработок за день: {format_money(final)}",
-            reply_markup=kb,
+            reply_markup=main_kb,
         )
         await state.clear()
         return
