@@ -146,7 +146,7 @@ async def history_add_reason(message: Message, state: FSMContext):
 async def history_add_mood(cb: CallbackQuery, state: FSMContext):
     mood = cb.data.split(":")[1]
     data = await state.get_data()
-    await db.add_history(
+    rid = await db.add_history(
         cb.from_user.id,
         data["d"],
         data["balance"],
@@ -154,14 +154,9 @@ async def history_add_mood(cb: CallbackQuery, state: FSMContext):
         data["note"],
         mood,
     )
+    await db.recalc_deltas_from(cb.from_user.id, data["d"])
     await state.clear()
-    record = {
-        "d": data["d"],
-        "balance": data["balance"],
-        "delta_text": data["delta_text"],
-        "note": data["note"],
-        "mood": mood,
-    }
+    record = await db.get_history(cb.from_user.id, rid)
     await cb.message.edit_text("Запись добавлена")
     await cb.message.answer(make_history_card(record), reply_markup=main_kb)
     await cb.answer()
@@ -274,7 +269,12 @@ async def history_edit_value(message: Message, state: FSMContext):
         value = message.text
     else:  # note
         value = message.text
-    await db.update_history(message.from_user.id, rid, **{field: value})
+    if field == "balance":
+        await db.update_history(message.from_user.id, rid, balance=value)
+        record = await db.get_history(message.from_user.id, rid)
+        await db.recalc_deltas_from(message.from_user.id, record["d"])
+    else:
+        await db.update_history(message.from_user.id, rid, **{field: value})
     await state.set_state(None)
     record = await db.get_history(message.from_user.id, rid)
     kb = InlineKeyboardMarkup(

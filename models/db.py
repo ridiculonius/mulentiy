@@ -1,6 +1,9 @@
 import aiosqlite
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from decimal import Decimal
+
+from services.money import format_money
 
 DB_PATH = Path('bot.db')
 
@@ -93,13 +96,22 @@ class Database:
             row = await cursor.fetchone()
         return row[0] if row else None
 
-    async def add_history(self, user_id: int, d: str, balance: float, delta_text: str, note: str, mood: str):
+    async def add_history(
+        self,
+        user_id: int,
+        d: str,
+        balance: float,
+        delta_text: str,
+        note: str,
+        mood: str,
+    ) -> int:
         conn = await self.connect()
-        await conn.execute(
+        cursor = await conn.execute(
             "INSERT INTO history(user_id, d, balance, delta_text, note, mood) VALUES(?,?,?,?,?,?)",
             (user_id, d, balance, delta_text, note, mood),
         )
         await conn.commit()
+        return cursor.lastrowid
 
     async def list_history(self, user_id: int, offset: int = 0, limit: int = 10) -> List[Dict[str, Any]]:
         conn = await self.connect()
@@ -165,6 +177,34 @@ class Database:
             "DELETE FROM history WHERE user_id=? AND id=?",
             (user_id, record_id),
         )
+        await conn.commit()
+
+    async def recalc_deltas_from(self, user_id: int, start_date: str):
+        conn = await self.connect()
+        async with conn.execute(
+            "SELECT balance FROM history WHERE user_id=? AND d < ? ORDER BY d DESC LIMIT 1",
+            (user_id, start_date),
+        ) as cursor:
+            row = await cursor.fetchone()
+        prev = Decimal(str(row[0])) if row and row[0] is not None else None
+        async with conn.execute(
+            "SELECT id, d, balance FROM history WHERE user_id=? AND d >= ? ORDER BY d",
+            (user_id, start_date),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        for rid, d, balance in rows:
+            if balance is None:
+                delta_text = "-"
+            elif prev is None:
+                delta_text = "начало"
+                prev = Decimal(str(balance))
+            else:
+                delta_text = format_money(Decimal(str(balance)) - prev)
+                prev = Decimal(str(balance))
+            await conn.execute(
+                "UPDATE history SET delta_text=? WHERE id=?",
+                (delta_text, rid),
+            )
         await conn.commit()
 
     async def seed_history_if_empty(self, user_id: int):
