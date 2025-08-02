@@ -1,5 +1,7 @@
 import asyncio
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from config import load_config
 from handlers import calc, history, misc
 
@@ -14,7 +16,7 @@ def create_dp() -> Dispatcher:
 
 async def main():
     config = load_config()
-    bot = Bot(token=config.bot_token, parse_mode="HTML")
+    bot = Bot(token=config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = create_dp()
     await dp.start_polling(bot)
 
