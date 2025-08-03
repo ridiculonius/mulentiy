@@ -8,7 +8,7 @@ from decimal import Decimal
 from datetime import date
 
 from services.money import parse_money, format_money, calc_intermediate, calc_final
-from services.analytics import sum_unconfirmed_rubles
+from services.orders import sum_rubles_from_text
 from models.db import Database
 from handlers.history import AddHistory
 from keyboards.main import main_kb
@@ -21,6 +21,7 @@ db = Database()
 class Calc(StatesGroup):
     site = State()
     unconfirmed = State()
+    orders = State()
     confirm = State()
     tbank = State()
     ozone = State()
@@ -56,6 +57,10 @@ async def start_calc(message: Message, state: FSMContext):
 
 async def ask_amount(target: Message | CallbackQuery, field: str, question: str, last_value):
     buttons = []
+    if field == "unconfirmed":
+        buttons.append([
+            InlineKeyboardButton(text="📋 Спарсить данные", callback_data="calc:parse")
+        ])
     if last_value is not None:
         buttons.append(
             [
@@ -96,7 +101,7 @@ async def get_unconfirmed(message: Message, state: FSMContext):
     try:
         unconfirmed = parse_money(message.text)
     except Exception:
-        total = sum_unconfirmed_rubles(message.text)
+        total = sum_rubles_from_text(message.text)
         if total == 0:
             await message.answer(
                 "Похоже, это не похоже на сумму. Введи число, например: 1234.56 или 1 234,56"
@@ -121,6 +126,81 @@ async def get_unconfirmed(message: Message, state: FSMContext):
         f"Промежуточный результат: {format_money(intermediate)}", reply_markup=kb
     )
 
+
+@router.callback_query(F.data == "calc:parse")
+async def parse_start(cb: CallbackQuery, state: FSMContext):
+    await state.set_state(Calc.orders)
+    await state.update_data(parse_total=Decimal("0"))
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Готово", callback_data="calc:parse_done"),
+                InlineKeyboardButton(text="❌ Прервать", callback_data="calc:parse_cancel"),
+            ]
+        ]
+    )
+    await cb.message.edit_text(
+        "Вставляй текст заказов по частям. Когда закончишь, нажми «Готово».",
+        reply_markup=kb,
+    )
+    await cb.answer()
+
+
+@router.message(Calc.orders)
+async def parse_collect(message: Message, state: FSMContext):
+    part = sum_rubles_from_text(message.text)
+    data = await state.get_data()
+    total = data.get("parse_total", Decimal("0")) + part
+    await state.update_data(parse_total=total)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Готово", callback_data="calc:parse_done"),
+                InlineKeyboardButton(text="❌ Прервать", callback_data="calc:parse_cancel"),
+            ]
+        ]
+    )
+    await message.answer(
+        f"Сейчас сумма: {format_money(total)}",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data == "calc:parse_done")
+async def parse_done(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    total = data.get("parse_total", Decimal("0"))
+    site = data.get("site")
+    intermediate = calc_intermediate(site, total)
+    await state.update_data(unconfirmed=total, intermediate=intermediate)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Продолжить", callback_data="calc:cont"),
+                InlineKeyboardButton(text="❌ Прервать", callback_data="calc:cancel"),
+            ]
+        ]
+    )
+    await cb.message.edit_text(f"Сумма заказов: {format_money(total)}")
+    await cb.message.answer(
+        f"Промежуточный результат: {format_money(intermediate)}",
+        reply_markup=kb,
+    )
+    await state.set_state(Calc.confirm)
+    await cb.answer()
+
+
+@router.callback_query(F.data == "calc:parse_cancel")
+async def parse_cancel(cb: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await state.set_state(Calc.unconfirmed)
+    await ask_amount(
+        cb,
+        "unconfirmed",
+        "💳 Сколько рублей в неподтверждённых заказах?",
+        data.get("last", {}).get("unconfirmed"),
+    )
+    await cb.answer()
 
 @router.callback_query(F.data == "calc:cancel")
 async def calc_cancel(cb: CallbackQuery, state: FSMContext):

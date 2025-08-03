@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from decimal import Decimal
 
-from services.money import format_money, parse_money
+from services.money import format_money
 
 DB_PATH = Path('bot.db')
 
@@ -190,48 +190,6 @@ class Database:
         )
         await conn.commit()
 
-    async def get_analytics_summary(self, user_id: int) -> Dict[str, float]:
-        conn = await self.connect()
-        async with conn.execute(
-            "SELECT balance, delta_text FROM history WHERE user_id=?",
-            (user_id,),
-        ) as cursor:
-            rows = await cursor.fetchall()
-        last_balance = None
-        deltas = []
-        for balance, delta_text in rows:
-            if balance is not None:
-                last_balance = balance
-            try:
-                deltas.append(float(parse_money(delta_text)))
-            except Exception:
-                continue
-        total_delta = sum(deltas)
-        avg_delta = total_delta / len(deltas) if deltas else 0.0
-        return {
-            "records": len(rows),
-            "last_balance": last_balance,
-            "total_delta": total_delta,
-            "avg_delta": avg_delta,
-        }
-
-    async def get_mood_stats(self, user_id: int) -> Dict[str, int]:
-        conn = await self.connect()
-        async with conn.execute(
-            "SELECT mood, COUNT(*) FROM history WHERE user_id=? GROUP BY mood",
-            (user_id,),
-        ) as cursor:
-            rows = await cursor.fetchall()
-        return {m: c for m, c in rows}
-
-    async def get_monthly_balances(self, user_id: int) -> List[Tuple[str, float]]:
-        conn = await self.connect()
-        async with conn.execute(
-            "SELECT substr(d,1,7) AS ym, AVG(balance) FROM history WHERE user_id=? AND balance IS NOT NULL GROUP BY ym ORDER BY ym",
-            (user_id,),
-        ) as cursor:
-            rows = await cursor.fetchall()
-        return [(r[0], r[1]) for r in rows]
 
     async def recalc_deltas_from(self, user_id: int, start_date: str):
         conn = await self.connect()

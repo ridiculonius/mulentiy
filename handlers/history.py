@@ -10,7 +10,7 @@ from typing import Any
 
 from models.db import Database
 from services.money import parse_money, format_money
-from services.analytics import sum_unconfirmed_rubles
+from services.orders import sum_rubles_from_text
 from services.plot import plot_balance_chart
 from keyboards.main import main_kb
 
@@ -159,7 +159,7 @@ async def history_add_balance(message: Message, state: FSMContext):
     try:
         balance = parse_money(message.text)
     except Exception:
-        total = sum_unconfirmed_rubles(message.text)
+        total = sum_rubles_from_text(message.text)
         if total > 0:
             balance = Decimal(str(total))
         else:
@@ -306,7 +306,7 @@ async def history_edit_value(message: Message, state: FSMContext):
         try:
             value = float(parse_money(message.text))
         except Exception:
-            total = sum_unconfirmed_rubles(message.text)
+            total = sum_rubles_from_text(message.text)
             if total > 0:
                 value = total
             else:
@@ -317,7 +317,7 @@ async def history_edit_value(message: Message, state: FSMContext):
             num = float(parse_money(message.text))
             value = format_money(num)
         except Exception:
-            total = sum_unconfirmed_rubles(message.text)
+            total = sum_rubles_from_text(message.text)
             if total > 0:
                 value = format_money(total)
             else:
