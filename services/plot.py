@@ -16,7 +16,7 @@ def plot_balance_chart(points: List[Tuple[str, float]]) -> BytesIO:
     plt.style.use("cyberpunk")
     fig, ax = plt.subplots(figsize=(8, 4))
     ax.plot(dates, balances, marker="o", linewidth=2)
-    mplcyberpunk.add_gradient_fill(dates, balances, ax=ax, alpha_fill=0.3)
+    mplcyberpunk.add_gradient_fill(ax, dates, balances, alpha_fill=0.3)
     mplcyberpunk.add_glow_effects()
     ax.set_xlabel("Дата")
     ax.set_ylabel("Баланс, ₽")
