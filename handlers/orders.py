@@ -22,7 +22,7 @@ async def orders_sum_start(message: Message, state: FSMContext):
 @router.message(OrdersSum.text)
 async def orders_sum_process(message: Message, state: FSMContext):
     total = sum_unconfirmed_rubles(message.text)
-    await message.answer(f"Сумма заказов: {format_money(total)} ₽")
+    await message.answer(f"Сумма заказов: {format_money(total)}")
     await state.clear()
 
 @router.callback_query(F.data == "orders:cancel")

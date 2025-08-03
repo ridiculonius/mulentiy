@@ -1,6 +1,7 @@
 from __future__ import annotations
 from io import BytesIO
 from typing import Dict, List, Tuple
+from decimal import Decimal
 from datetime import datetime
 import re
 
@@ -52,24 +53,24 @@ def format_overview(summary: Dict[str, float]) -> List[str]:
     lines = [f"Всего записей: {summary['records']}"]
     if summary["last_balance"] is not None:
         lines.append(
-            f"Последний баланс: {format_money(summary['last_balance'])} ₽"
+            f"Последний баланс: {format_money(summary['last_balance'])}"
         )
     lines.append(
-        f"Суммарный доход: {format_money(summary['total_delta'])} ₽"
+        f"Суммарный доход: {format_money(summary['total_delta'])}"
     )
     if summary["records"]:
         lines.append(
-            f"Средний доход: {format_money(summary['avg_delta'])} ₽"
+            f"Средний доход: {format_money(summary['avg_delta'])}"
         )
     return lines
 
 
-def sum_unconfirmed_rubles(text: str) -> float:
+def sum_unconfirmed_rubles(text: str) -> Decimal:
     pattern = re.compile(r"([\d\s]+(?:[.,]\d+)?)\s*₽")
-    total = 0.0
+    total = Decimal("0")
     for m in pattern.findall(text):
         try:
-            total += float(parse_money(m))
+            total += parse_money(m)
         except Exception:
             continue
     return total

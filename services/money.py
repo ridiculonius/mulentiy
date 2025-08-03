@@ -12,7 +12,9 @@ def parse_money(value: str) -> Decimal:
         raise ValueError('invalid number') from exc
 
 
-def format_money(value: Decimal) -> str:
+def format_money(value: Decimal | float | int) -> str:
+    if not isinstance(value, Decimal):
+        value = Decimal(str(value))
     q = value.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     parts = f"{q:,.2f}".replace(',', ' ')
     return parts + ' ₽'

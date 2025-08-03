@@ -8,6 +8,7 @@ from decimal import Decimal
 from datetime import date
 
 from services.money import parse_money, format_money, calc_intermediate, calc_final
+from services.analytics import sum_unconfirmed_rubles
 from models.db import Database
 from handlers.history import AddHistory
 from keyboards.main import main_kb
@@ -95,8 +96,14 @@ async def get_unconfirmed(message: Message, state: FSMContext):
     try:
         unconfirmed = parse_money(message.text)
     except Exception:
-        await message.answer("Похоже, это не похоже на сумму. Введи число, например: 1234.56 или 1 234,56")
-        return
+        total = sum_unconfirmed_rubles(message.text)
+        if total == 0:
+            await message.answer(
+                "Похоже, это не похоже на сумму. Введи число, например: 1234.56 или 1 234,56"
+            )
+            return
+        unconfirmed = total
+        await message.answer(f"Распознанная сумма: {format_money(unconfirmed)}")
     data = await state.get_data()
     site = data.get("site")
     intermediate = calc_intermediate(site, unconfirmed)
