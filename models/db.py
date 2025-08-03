@@ -1,6 +1,6 @@
 import aiosqlite
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from decimal import Decimal
 
 from services.money import format_money
@@ -140,6 +140,17 @@ class Database:
         ) as cursor:
             row = await cursor.fetchone()
         return row[0] if row else 0
+
+    async def get_balance_history(self, user_id: int, days: int) -> List[Tuple[str, float]]:
+        """Return (date, balance) tuples for the last `days` records."""
+        conn = await self.connect()
+        async with conn.execute(
+            "SELECT d, balance FROM history WHERE user_id=? AND balance IS NOT NULL ORDER BY d DESC LIMIT ?",
+            (user_id, days),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        rows.reverse()
+        return [(r[0], r[1]) for r in rows]
 
     async def get_history(self, user_id: int, record_id: int) -> Optional[Dict[str, Any]]:
         conn = await self.connect()

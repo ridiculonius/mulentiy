@@ -10,6 +10,9 @@ main_kb = ReplyKeyboardMarkup(
             KeyboardButton(text="🔄 Повторить расчёт"),
             KeyboardButton(text="💾 Использовать прошлые значения"),
         ],
+        [
+            KeyboardButton(text="📈 График"),
+        ],
     ],
     resize_keyboard=True,
 )

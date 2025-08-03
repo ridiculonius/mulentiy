@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -10,6 +10,7 @@ from typing import Any
 
 from models.db import Database
 from services.money import parse_money, format_money
+from services.plot import plot_balance_chart
 from keyboards.main import main_kb
 
 router = Router()
@@ -35,6 +36,10 @@ class AddHistory(StatesGroup):
 
 class EditHistory(StatesGroup):
     value = State()
+
+
+class ChartHistory(StatesGroup):
+    days = State()
 
 
 def history_kb(records, page: int, total: int):
@@ -64,6 +69,39 @@ async def cmd_history(message: Message, state: FSMContext):
     records = await db.list_history(message.from_user.id, 0, PAGE_SIZE)
     text = make_history_list(records)
     await message.answer(text, reply_markup=history_kb(records, 0, total))
+
+
+@router.message(Command("chart"))
+@router.message(F.text == "📈 График")
+async def chart_start(message: Message, state: FSMContext):
+    await state.set_state(ChartHistory.days)
+    await message.answer(
+        "За сколько последних дней показать график? (по умолчанию 30)",
+    )
+
+
+@router.message(ChartHistory.days)
+async def chart_show(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text:
+        try:
+            days = int(text)
+            if days <= 0:
+                raise ValueError
+        except ValueError:
+            await message.answer("Нужно ввести положительное число")
+            return
+    else:
+        days = 30
+    points = await db.get_balance_history(message.from_user.id, days)
+    await state.clear()
+    if not points:
+        await message.answer("Недостаточно данных")
+        return
+    buf = plot_balance_chart(points)
+    await message.answer_photo(
+        BufferedInputFile(buf.getvalue(), filename="chart.png")
+    )
 
 
 def make_history_list(records):
