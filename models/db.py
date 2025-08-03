@@ -6,11 +6,13 @@ from decimal import Decimal
 from services.money import format_money
 
 DB_PATH = Path('bot.db')
+OWNER_ID = 329812385
 
 
 CREATE_USERS = """
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
+    username TEXT,
     last_site REAL,
     last_unconfirmed REAL,
     last_tbank REAL,
@@ -47,6 +49,11 @@ class Database:
             self._conn = await aiosqlite.connect(self.path)
             await self._conn.execute("PRAGMA foreign_keys = ON")
             await self._conn.execute(CREATE_USERS)
+            # add username column if migrating from older schema
+            try:
+                await self._conn.execute("ALTER TABLE users ADD COLUMN username TEXT")
+            except aiosqlite.OperationalError:
+                pass
             await self._conn.execute(CREATE_HISTORY)
             await self._conn.execute(CREATE_INDEX)
             await self._conn.commit()
@@ -57,21 +64,31 @@ class Database:
             await self._conn.close()
             self._conn = None
 
-    async def get_last_values(self, user_id: int) -> Dict[str, Optional[float]]:
+    async def get_last_values(
+        self, user_id: int, username: Optional[str] = None
+    ) -> Dict[str, Optional[float]]:
         conn = await self.connect()
         async with conn.execute(
-            "SELECT last_site, last_unconfirmed, last_tbank, last_ozone FROM users WHERE user_id=?",
+            "SELECT username, last_site, last_unconfirmed, last_tbank, last_ozone FROM users WHERE user_id=?",
             (user_id,),
         ) as cursor:
             row = await cursor.fetchone()
         if row:
+            if username and row[0] != username:
+                await conn.execute(
+                    "UPDATE users SET username=? WHERE user_id=?", (username, user_id)
+                )
+                await conn.commit()
             return {
-                "site": row[0],
-                "unconfirmed": row[1],
-                "tbank": row[2],
-                "ozone": row[3],
+                "site": row[1],
+                "unconfirmed": row[2],
+                "tbank": row[3],
+                "ozone": row[4],
             }
-        await conn.execute("INSERT INTO users(user_id) VALUES(?)", (user_id,))
+        await conn.execute(
+            "INSERT INTO users(user_id, username) VALUES(?, ?)",
+            (user_id, username),
+        )
         await conn.commit()
         return {"site": None, "unconfirmed": None, "tbank": None, "ozone": None}
 
@@ -220,10 +237,10 @@ class Database:
             )
         await conn.commit()
 
-    async def seed_history_if_empty(self, user_id: int):
-        # ensure the user row exists before inserting history entries
-        await self.get_last_values(user_id)
-        if await self.count_history(user_id) > 0:
+    async def seed_history_if_empty(self, user_id: int, username: Optional[str] = None):
+        """Seed example history only for the owner and only once."""
+        await self.get_last_values(user_id, username)
+        if user_id != OWNER_ID or await self.count_history(user_id) > 0:
             return
         from models.seed_data import INITIAL_HISTORY, MOOD_MAP
         from services.money import parse_money

@@ -65,7 +65,8 @@ def history_kb(records, page: int, total: int):
 @router.message(F.text == "📜 История")
 async def cmd_history(message: Message, state: FSMContext):
     await state.clear()
-    await db.seed_history_if_empty(message.from_user.id)
+    username = f"@{message.from_user.username}" if message.from_user.username else None
+    await db.seed_history_if_empty(message.from_user.id, username)
     total = await db.count_history(message.from_user.id)
     records = await db.list_history(message.from_user.id, 0, PAGE_SIZE)
     text = make_history_list(records)

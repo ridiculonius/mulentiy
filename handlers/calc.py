@@ -34,7 +34,8 @@ class EditLast(StatesGroup):
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
-    await db.seed_history_if_empty(message.from_user.id)
+    username = f"@{message.from_user.username}" if message.from_user.username else None
+    await db.seed_history_if_empty(message.from_user.id, username)
     await message.answer(
         "Привет! Я помогу посчитать заработок за день и вести историю. Выбери действие👇",
         reply_markup=main_kb,
@@ -44,7 +45,8 @@ async def cmd_start(message: Message, state: FSMContext):
 @router.message(F.text == "🚀 Начать расчёт")
 async def start_calc(message: Message, state: FSMContext):
     await state.clear()
-    last = await db.get_last_values(message.from_user.id)
+    username = f"@{message.from_user.username}" if message.from_user.username else None
+    last = await db.get_last_values(message.from_user.id, username)
     await state.update_data(last=last)
     await state.set_state(Calc.site)
     await ask_amount(
@@ -362,7 +364,8 @@ async def repeat_calc(message: Message, state: FSMContext):
 
 @router.message(F.text == "💾 Использовать прошлые значения")
 async def use_last(message: Message, state: FSMContext):
-    values = await db.get_last_values(message.from_user.id)
+    username = f"@{message.from_user.username}" if message.from_user.username else None
+    values = await db.get_last_values(message.from_user.id, username)
     if any(v is None for v in values.values()):
         await message.answer("Нет сохранённых значений. Нажми '🚀 Начать расчёт'.")
         return
