@@ -190,6 +190,24 @@ class Database:
         )
         await conn.commit()
 
+    async def get_mood_stats(self, user_id: int) -> Dict[str, int]:
+        conn = await self.connect()
+        async with conn.execute(
+            "SELECT mood, COUNT(*) FROM history WHERE user_id=? GROUP BY mood",
+            (user_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return {m: c for m, c in rows}
+
+    async def get_monthly_balances(self, user_id: int) -> List[Tuple[str, float]]:
+        conn = await self.connect()
+        async with conn.execute(
+            "SELECT substr(d,1,7) AS ym, AVG(balance) FROM history WHERE user_id=? AND balance IS NOT NULL GROUP BY ym ORDER BY ym",
+            (user_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [(r[0], r[1]) for r in rows]
+
     async def recalc_deltas_from(self, user_id: int, start_date: str):
         conn = await self.connect()
         async with conn.execute(

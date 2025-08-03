@@ -12,6 +12,7 @@ main_kb = ReplyKeyboardMarkup(
         ],
         [
             KeyboardButton(text="📈 График"),
+            KeyboardButton(text="📊 Аналитика"),
         ],
     ],
     resize_keyboard=True,
