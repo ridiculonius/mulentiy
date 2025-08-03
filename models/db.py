@@ -221,6 +221,8 @@ class Database:
         await conn.commit()
 
     async def seed_history_if_empty(self, user_id: int):
+        # ensure the user row exists before inserting history entries
+        await self.get_last_values(user_id)
         if await self.count_history(user_id) > 0:
             return
         from models.seed_data import INITIAL_HISTORY, MOOD_MAP
