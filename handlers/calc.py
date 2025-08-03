@@ -178,7 +178,7 @@ async def get_ozone(message: Message, state: FSMContext):
         delta_text = format_money(final - Decimal(str(last_balance)))
     await state.set_state(AddHistory.reason)
     await state.update_data(
-        d=date.today().isoformat(),
+        d=date.today().strftime("%Y-%m-%d"),
         balance=float(final),
         delta_text=delta_text,
     )
@@ -254,7 +254,7 @@ async def calc_use_last(cb: CallbackQuery, state: FSMContext):
             delta_text = format_money(final - Decimal(str(last_balance)))
         await state.set_state(AddHistory.reason)
         await state.update_data(
-            d=date.today().isoformat(),
+            d=date.today().strftime("%Y-%m-%d"),
             balance=float(final),
             delta_text=delta_text,
         )
