@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from config import load_config
-from handlers import calc, history, misc, analytics
+from handlers import calc, history, misc, analytics, orders
 
 
 def create_dp() -> Dispatcher:
@@ -12,6 +12,7 @@ def create_dp() -> Dispatcher:
     dp.include_router(calc.router)
     dp.include_router(history.router)
     dp.include_router(analytics.router)
+    dp.include_router(orders.router)
     return dp
 
 

@@ -10,6 +10,7 @@ from typing import Any
 
 from models.db import Database
 from services.money import parse_money, format_money
+from services.analytics import sum_unconfirmed_rubles
 from services.plot import plot_balance_chart
 from keyboards.main import main_kb
 
@@ -158,8 +159,12 @@ async def history_add_balance(message: Message, state: FSMContext):
     try:
         balance = parse_money(message.text)
     except Exception:
-        await message.answer("Похоже, это не похоже на сумму. Введи число.")
-        return
+        total = sum_unconfirmed_rubles(message.text)
+        if total > 0:
+            balance = Decimal(str(total))
+        else:
+            await message.answer("Похоже, это не похоже на сумму. Введи число.")
+            return
     last = await db.get_last_balance(message.from_user.id)
     if last is None:
         delta_text = "начало"
@@ -301,10 +306,22 @@ async def history_edit_value(message: Message, state: FSMContext):
         try:
             value = float(parse_money(message.text))
         except Exception:
-            await message.answer("Похоже, это не похоже на сумму. Введи число.")
-            return
+            total = sum_unconfirmed_rubles(message.text)
+            if total > 0:
+                value = total
+            else:
+                await message.answer("Похоже, это не похоже на сумму. Введи число.")
+                return
     elif field == "delta_text":
-        value = message.text
+        try:
+            num = float(parse_money(message.text))
+            value = format_money(num)
+        except Exception:
+            total = sum_unconfirmed_rubles(message.text)
+            if total > 0:
+                value = format_money(total)
+            else:
+                value = message.text
     else:  # note
         value = message.text
     if field == "balance":

@@ -9,7 +9,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 
-from services.money import parse_money
+from services.money import parse_money, format_money
 
 
 MOOD_EMOJI = {"green": "🟢", "yellow": "🟡", "red": "🔴"}
@@ -46,6 +46,22 @@ def plot_monthly_chart(points: List[Tuple[str, float]]) -> BytesIO:
     plt.close(fig)
     buf.seek(0)
     return buf
+
+
+def format_overview(summary: Dict[str, float]) -> List[str]:
+    lines = [f"Всего записей: {summary['records']}"]
+    if summary["last_balance"] is not None:
+        lines.append(
+            f"Последний баланс: {format_money(summary['last_balance'])} ₽"
+        )
+    lines.append(
+        f"Суммарный доход: {format_money(summary['total_delta'])} ₽"
+    )
+    if summary["records"]:
+        lines.append(
+            f"Средний доход: {format_money(summary['avg_delta'])} ₽"
+        )
+    return lines
 
 
 def sum_unconfirmed_rubles(text: str) -> float:

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from decimal import Decimal
 
-from services.money import format_money
+from services.money import format_money, parse_money
 
 DB_PATH = Path('bot.db')
 
@@ -189,6 +189,31 @@ class Database:
             (user_id, record_id),
         )
         await conn.commit()
+
+    async def get_analytics_summary(self, user_id: int) -> Dict[str, float]:
+        conn = await self.connect()
+        async with conn.execute(
+            "SELECT balance, delta_text FROM history WHERE user_id=?",
+            (user_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        last_balance = None
+        deltas = []
+        for balance, delta_text in rows:
+            if balance is not None:
+                last_balance = balance
+            try:
+                deltas.append(float(parse_money(delta_text)))
+            except Exception:
+                continue
+        total_delta = sum(deltas)
+        avg_delta = total_delta / len(deltas) if deltas else 0.0
+        return {
+            "records": len(rows),
+            "last_balance": last_balance,
+            "total_delta": total_delta,
+            "avg_delta": avg_delta,
+        }
 
     async def get_mood_stats(self, user_id: int) -> Dict[str, int]:
         conn = await self.connect()
