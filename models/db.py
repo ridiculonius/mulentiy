@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS history (
     delta_text TEXT,
     note TEXT,
     mood TEXT CHECK(mood IN ('green','yellow','red')),
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 """
 
